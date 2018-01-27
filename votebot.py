@@ -2,15 +2,30 @@ import logging
 import logging.config
 import json
 import os
+import os.path
+import shutil
+from sys import exit
 from time import monotonic, sleep
 
 from steem import Steem
 from steem.utils import time_elapsed
 
-import config
+try:
+    from config import settings
+except ImportError:
+    base_dir = os.path.dirname(os.path.realpath(__file__))
+    config_path = os.path.join(base_dir, 'config', 'settings.py')
+    if not os.path.exists(config_path):
+        shutil.copy(os.path.join(base_dir, 'settings.example.py'), config_path)
+
+    try:
+        from config import settings
+    except ImportError:
+        print("Could not find settings.py. Please make sure it exists and is readable.")
+        exit(1)
 
 
-logging.config.dictConfig(config.LOGGING)
+logging.config.dictConfig(settings.LOGGING)
 logger = logging.getLogger()
 
 
@@ -24,8 +39,7 @@ class VoteBot(object):
         logger.info("### Running Votebot ###")
         self.load_state()
 
-        votes = []
-        accounts = config.WATCHED_ACCOUNTS
+        accounts = settings.WATCHED_ACCOUNTS
         for account, params in accounts.items():
             weight = float(params.get('vote_weight', 100.0))
             max_votes = int(params.get('max_votes_per_day', 1))
@@ -41,7 +55,7 @@ class VoteBot(object):
             # Remove obsolete vote times from list
             now = monotonic()
             for idx, vote_time in enumerate(user_state['previous_votes']):
-                if now - vote_time > config.DAY:
+                if now - vote_time > settings.DAY:
                     del user_state['previous_votes'][idx]
 
             post = None
@@ -70,7 +84,7 @@ class VoteBot(object):
                 continue
 
             age = time_elapsed(created).total_seconds()
-            if age > config.MAX_POST_AGE or age >= config.WEEK:
+            if age > settings.MAX_POST_AGE or age >= settings.WEEK:
                 # Mark post as already processed
                 user_state['last_entry_id'] = entry_id
                 continue
@@ -84,8 +98,8 @@ class VoteBot(object):
             self.save_state()
 
     def get_blogs(self, account):
-        total_nodes = len(config.STEEM_RPC_NODES)
-        retries = config.STEEMD_RETRIES
+        total_nodes = len(settings.STEEM_RPC_NODES)
+        retries = settings.STEEMD_RETRIES
         failover_count = 0
         blogs = None
         while failover_count < total_nodes and blogs is None:
@@ -108,7 +122,7 @@ class VoteBot(object):
         options = {
             'identifier': "@{author}/{permlink}".format(author=author, permlink=permlink),
             'weight': weight,
-            'account': config.STEEM_USER,
+            'account': settings.STEEM_USER,
         }
         try:
             self._steemd.commit.vote(**options)
@@ -120,7 +134,7 @@ class VoteBot(object):
     def load_state(self):
         self._state = {}
         try:
-            with open(config.TMP_FILE, mode='r+') as f:
+            with open(settings.TMP_FILE, mode='r+') as f:
                 try:
                     self._state = json.load(f)
                 except json.decoder.JSONDecodeError:
@@ -129,14 +143,14 @@ class VoteBot(object):
             pass
 
     def save_state(self):
-        with open(config.TMP_FILE, mode='w') as f:
+        with open(settings.TMP_FILE, mode='w') as f:
             json.dump(self._state, f)
 
 
 if __name__ == '__main__':
-    os.environ['UNLOCK'] = str(config.WALLET_PASSWORD)
+    os.environ['UNLOCK'] = str(settings.WALLET_PASSWORD)
     try:
-        votebot = VoteBot(nodes=config.STEEM_RPC_NODES, debug=config.DEBUG)
+        votebot = VoteBot(nodes=settings.STEEM_RPC_NODES, debug=settings.DEBUG)
         votebot.run()
     except:
         logger.exception("Votebot failed!")
