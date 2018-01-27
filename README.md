@@ -17,7 +17,7 @@ $ sudo usermod -aG docker $(whoami)
 
 ## 2. Install votebot & initial setup
 ```bash
-$ cd && mkdir ./config
+$ mkdir -p ~/votebot/config && cd ~/votebot
 $ docker pull blockbrothers/votebot:latest
 $ docker run -v $(pwd)/config:/usr/src/votebot/config -d --name votebot -t votebot:latest
 $ docker exec -ti votebot steempy addkey
